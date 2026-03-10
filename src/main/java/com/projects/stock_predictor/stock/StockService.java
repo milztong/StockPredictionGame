@@ -158,20 +158,30 @@ public class StockService {
 
         if (isStale) {
             System.out.println("Cache stale for " + stock.getTicker() + ", fetching...");
-            List<AlphaVantageClient.PriceData> prices = alphaVantageClient.fetchDailyPrices(stock.getTicker());
+            try {
+                List<AlphaVantageClient.PriceData> prices = alphaVantageClient.fetchDailyPrices(stock.getTicker());
+                System.out.println("Fetched " + prices.size() + " price points for " + stock.getTicker());
 
-            for (AlphaVantageClient.PriceData data : prices) {
-                if (!stockPriceRepository.existsByStockIdAndDate(stock.getId(), data.date())) {
-                    stockPriceRepository.save(new StockPrice(
-                            stock, data.date(), data.open(), data.high(),
-                            data.low(), data.close(), data.volume()
-                    ));
+                for (AlphaVantageClient.PriceData data : prices) {
+                    try {
+                        if (!stockPriceRepository.existsByStockIdAndDate(stock.getId(), data.date())) {
+                            stockPriceRepository.save(new StockPrice(
+                                    stock, data.date(), data.open(), data.high(),
+                                    data.low(), data.close(), data.volume()
+                            ));
+                        }
+                    } catch (Exception e) {
+                        System.err.println("Failed to save price for " + data.date() + ": " + e.getMessage());
+                    }
                 }
-            }
 
-            stock.setLastFetched(LocalDateTime.now());
-            stockRepository.save(stock);
-            System.out.println("Cache refreshed for " + stock.getTicker());
+                stock.setLastFetched(LocalDateTime.now());
+                stockRepository.save(stock);
+                System.out.println("Cache refreshed for " + stock.getTicker());
+            } catch (Exception e) {
+                System.err.println("Error refreshing cache for " + stock.getTicker() + ": " + e.getMessage());
+                throw new IOException(e);
+            }
         }
     }
 
