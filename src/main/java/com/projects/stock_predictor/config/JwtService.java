@@ -5,7 +5,7 @@ import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-
+import org.springframework.security.core.userdetails.UserDetails;
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
@@ -56,10 +56,16 @@ public class JwtService {
         return UUID.fromString(extractClaims(token).get("userId", String.class));
     }
 
-    public boolean isTokenValid(String token) {
+    public String extractUsername(String token) {
+        return extractEmail(token); // alias so JwtAuthFilter works
+    }
+
+    public boolean isTokenValid(String token, UserDetails userDetails) {
         try {
+            String email = extractEmail(token);
             Claims claims = extractClaims(token);
-            return claims.getExpiration().after(new Date());
+            boolean notExpired = claims.getExpiration().after(new Date());
+            return email.equals(userDetails.getUsername()) && notExpired;
         } catch (Exception e) {
             return false;
         }

@@ -27,9 +27,9 @@ public class AuthService {
     }
 
     /**
-     * Registers a new user and returns a JWT token.
+     * Registers a new user and returns a JWT token — same shape as login().
      */
-    public AuthRequests.AuthResponse register(AuthRequests.RegisterRequest request) {
+    public TokenAndUser register(AuthRequests.RegisterRequest request) {
         if (userRepository.existsByEmail(request.email())) {
             throw new IllegalArgumentException("Email already in use");
         }
@@ -44,14 +44,21 @@ public class AuthService {
         );
         userRepository.save(user);
 
-        return new AuthRequests.AuthResponse(user.getUsername(), user.getEmail(), user.getId().toString());
+        String token = jwtService.generateToken(user.getId(), user.getEmail());
+
+        return new TokenAndUser(token,
+                new AuthRequests.AuthResponse(
+                        user.getUsername(),
+                        user.getEmail(),
+                        user.getId().toString(),
+                        token
+                ));
     }
 
     /**
-     * Authenticates a user and returns their info + a JWT token (set as cookie by controller).
+     * Authenticates a user and returns their info + a JWT token.
      */
     public TokenAndUser login(AuthRequests.LoginRequest request) {
-        // Spring Security validates credentials + throws if wrong
         authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(request.email(), request.password())
         );
@@ -62,13 +69,23 @@ public class AuthService {
         String token = jwtService.generateToken(user.getId(), user.getEmail());
 
         return new TokenAndUser(token,
-                new AuthRequests.AuthResponse(user.getUsername(), user.getEmail(), user.getId().toString()));
+                new AuthRequests.AuthResponse(
+                        user.getUsername(),
+                        user.getEmail(),
+                        user.getId().toString(),
+                        token
+                ));
     }
 
     public AuthRequests.AuthResponse getMe(String email) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
-        return new AuthRequests.AuthResponse(user.getUsername(), user.getEmail(), user.getId().toString());
+        return new AuthRequests.AuthResponse(
+                user.getUsername(),
+                user.getEmail(),
+                user.getId().toString(),
+                null  // no token needed for /me
+        );
     }
 
     public record TokenAndUser(String token, AuthRequests.AuthResponse user) {}
