@@ -1,0 +1,42 @@
+services:
+
+  # PostgreSQL database
+  postgres:
+    image: postgres:16-alpine
+    container_name: stock_predictor_db
+    environment:
+      POSTGRES_DB: stock_predictor
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Spring Boot backend
+  backend:
+    build: .
+    container_name: stock_predictor_backend
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/stock_predictor
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      ALPHAVANTAGE_API_KEY: ${ALPHAVANTAGE_API_KEY}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRY_MS: 86400000
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: on-failure
+
+volumes:
+  postgres_data:

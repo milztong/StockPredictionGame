@@ -1,5 +1,11 @@
 package com.projects.stock_predictor.stock;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -8,72 +14,52 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 @Service
 public class StockService {
 
-    // How many hours before we re-fetch from Alpha Vantage
     private static final int CACHE_TTL_HOURS = 24;
-
-    // How many days of history to show the user (last 7 are hidden for prediction)
     private static final int HISTORY_DAYS = 90;
-
-    // Curated pool of well-known stocks — add more as you like
-    private static final List<String[]> STOCK_POOL = List.of(
-            new String[]{"AAPL", "Apple Inc."},
-            new String[]{"MSFT", "Microsoft Corporation"},
-            new String[]{"GOOGL", "Alphabet Inc."},
-            new String[]{"AMZN", "Amazon.com Inc."},
-            new String[]{"TSLA", "Tesla Inc."},
-            new String[]{"META", "Meta Platforms Inc."},
-            new String[]{"NVDA", "NVIDIA Corporation"},
-            new String[]{"NFLX", "Netflix Inc."},
-            new String[]{"AMD", "Advanced Micro Devices"},
-            new String[]{"INTC", "Intel Corporation"}
-    );
 
     private final StockRepository stockRepository;
     private final StockPriceRepository stockPriceRepository;
     private final AlphaVantageClient alphaVantageClient;
+    private final OkHttpClient httpClient;
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Value("${alphavantage.api.key}")
+    private String apiKey;
 
     public StockService(StockRepository stockRepository,
                         StockPriceRepository stockPriceRepository,
-                        AlphaVantageClient alphaVantageClient) {
+                        AlphaVantageClient alphaVantageClient,
+                        OkHttpClient httpClient) {
         this.stockRepository = stockRepository;
         this.stockPriceRepository = stockPriceRepository;
         this.alphaVantageClient = alphaVantageClient;
+        this.httpClient = httpClient;
     }
 
     /**
-     * Seeds the DB with the curated stock pool if not already present.
-     * Call this once on startup.
+     * Returns the daily challenge stock — same for all users on the same day.
+     * Uses the date as a seed so it rotates deterministically every day.
      */
     @Transactional
-    public void seedStocksIfNeeded() {
-        for (String[] entry : STOCK_POOL) {
-            String ticker = entry[0];
-            String name = entry[1];
-            if (stockRepository.findByTicker(ticker).isEmpty()) {
-                stockRepository.save(new Stock(ticker, name));
-                System.out.println("Seeded stock: " + ticker);
-            }
+    public AnonymousStockResponse getDailyChallengeStock() throws IOException {
+        List<Stock> activeStocks = stockRepository.findAllByActiveTrue();
+        if (activeStocks.isEmpty()) {
+            throw new RuntimeException("No active stocks in DB. Add some via POST /api/stocks/add");
         }
-    }
 
-    /**
-     * Returns a random stock with 83 days of OHLC history (last 7 days hidden).
-     * Fetches from Alpha Vantage if cache is stale.
-     */
-    @Transactional
-    public AnonymousStockResponse getRandomAnonymousStock() throws IOException {
-        Stock stock = stockRepository.findRandomActiveStock()
-                .orElseThrow(() -> new RuntimeException("No active stocks found in DB"));
+        // Use today's date as seed — same stock all day, rotates daily
+        int dayOfYear = LocalDate.now().getDayOfYear();
+        int year = LocalDate.now().getYear();
+        int seed = year * 1000 + dayOfYear;
+        Stock stock = activeStocks.get(seed % activeStocks.size());
 
         refreshCacheIfNeeded(stock);
 
-        // Show 83 days of history — last 7 days are hidden until prediction reveal
         LocalDate today = LocalDate.now();
         LocalDate visibleFrom = today.minusDays(HISTORY_DAYS);
         LocalDate visibleUntil = today.minusDays(7);
@@ -96,19 +82,62 @@ public class StockService {
                 stock.getId(),
                 generateCodename(stock.getId()),
                 pricePoints,
-                visibleUntil.plusDays(7).toString() // target date = 7 days after last visible
+                visibleUntil.plusDays(7).toString()
         );
     }
 
     /**
-     * Returns full price history for a stock including the last 7 days.
-     * Used after prediction is revealed.
+     * Dynamically adds a stock by ticker using Alpha Vantage symbol search.
+     */
+    @Transactional
+    public void addStockByTicker(String ticker, String name) throws IOException {
+        if (stockRepository.findByTicker(ticker).isPresent()) {
+            throw new IllegalArgumentException("Stock already exists: " + ticker);
+        }
+
+        String companyName = name;
+
+        // Only call Alpha Vantage search if no name was provided
+        if (companyName == null || companyName.isBlank()) {
+            String url = "https://www.alphavantage.co/query"
+                    + "?function=SYMBOL_SEARCH"
+                    + "&keywords=" + ticker
+                    + "&apikey=" + apiKey;
+
+            Request request = new Request.Builder().url(url).build();
+            try (Response response = httpClient.newCall(request).execute()) {
+                if (!response.isSuccessful() || response.body() == null) {
+                    throw new IOException("Alpha Vantage search failed");
+                }
+                String json = response.body().string();
+                JsonNode root = objectMapper.readTree(json);
+                JsonNode matches = root.get("bestMatches");
+
+                if (matches == null || matches.isEmpty()) {
+                    throw new IllegalArgumentException("Ticker not found: " + ticker);
+                }
+
+                companyName = ticker; // fallback
+                for (JsonNode match : matches) {
+                    if (match.get("1. symbol").asText().equalsIgnoreCase(ticker)) {
+                        companyName = match.get("2. name").asText();
+                        break;
+                    }
+                }
+            }
+        }
+
+        stockRepository.save(new Stock(ticker, companyName));
+        System.out.println("Added stock: " + ticker + " — " + companyName);
+    }
+
+    /**
+     * Returns full price history including last 7 days — used on reveal page.
      */
     @Transactional
     public List<PricePoint> getFullHistory(UUID stockId) {
         LocalDate from = LocalDate.now().minusDays(HISTORY_DAYS);
         LocalDate to = LocalDate.now();
-
         return stockPriceRepository
                 .findByStockIdAndDateBetweenOrderByDateAsc(stockId, from, to)
                 .stream()
@@ -128,19 +157,14 @@ public class StockService {
                 stock.getLastFetched().isBefore(LocalDateTime.now().minusHours(CACHE_TTL_HOURS));
 
         if (isStale) {
-            System.out.println("Cache stale for " + stock.getTicker() + ", fetching from Alpha Vantage...");
+            System.out.println("Cache stale for " + stock.getTicker() + ", fetching...");
             List<AlphaVantageClient.PriceData> prices = alphaVantageClient.fetchDailyPrices(stock.getTicker());
 
             for (AlphaVantageClient.PriceData data : prices) {
                 if (!stockPriceRepository.existsByStockIdAndDate(stock.getId(), data.date())) {
                     stockPriceRepository.save(new StockPrice(
-                            stock,
-                            data.date(),
-                            data.open(),
-                            data.high(),
-                            data.low(),
-                            data.close(),
-                            data.volume()
+                            stock, data.date(), data.open(), data.high(),
+                            data.low(), data.close(), data.volume()
                     ));
                 }
             }
@@ -151,18 +175,16 @@ public class StockService {
         }
     }
 
-    /**
-     * Generates a consistent codename from the stock UUID.
-     * Same stock always gets same codename — but it reveals nothing about the ticker.
-     */
     public String generateCodename(UUID stockId) {
-        String[] adjectives = {"Silent", "Golden", "Iron", "Silver", "Phantom", "Neon", "Cosmic", "Electric", "Turbo", "Apex"};
-        String[] nouns = {"Falcon", "Titan", "Nova", "Orbit", "Pulse", "Vortex", "Comet", "Nexus", "Spark", "Zenith"};
+        String[] adjectives = {"Silent", "Golden", "Iron", "Silver", "Phantom",
+                "Neon", "Cosmic", "Electric", "Turbo", "Apex"};
+        String[] nouns = {"Falcon", "Titan", "Nova", "Orbit", "Pulse",
+                "Vortex", "Comet", "Nexus", "Spark", "Zenith"};
         int hash = Math.abs(stockId.hashCode());
         return adjectives[hash % adjectives.length] + " " + nouns[(hash / 10) % nouns.length];
     }
 
-    // ── Response DTOs ─────────────────────────────────────────────────────────
+    // ── Response DTOs ────────────────────────────────────────────────────────
 
     public record AnonymousStockResponse(
             UUID stockId,
