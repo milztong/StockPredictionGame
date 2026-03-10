@@ -8,6 +8,9 @@ COPY build.gradle.kts settings.gradle.kts ./
 COPY gradle gradle/
 COPY gradlew ./
 
+# Fix: make gradlew executable
+RUN chmod +x gradlew
+
 # Download dependencies (cached if build files unchanged)
 RUN ./gradlew dependencies --no-daemon
 
