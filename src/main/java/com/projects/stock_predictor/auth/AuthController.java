@@ -1,6 +1,5 @@
 package com.projects.stock_predictor.auth;
 
-import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -12,50 +11,56 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
 
     private final AuthService authService;
-    private final CookieService cookieService;
 
-    public AuthController(AuthService authService, CookieService cookieService) {
+    public AuthController(AuthService authService) {
         this.authService = authService;
-        this.cookieService = cookieService;
     }
 
     /**
      * POST /api/auth/register
-     * Creates a new user. Does NOT log them in automatically — they must call /login next.
+     * Creates a new user and returns JWT token in response body.
      */
     @PostMapping("/register")
     public ResponseEntity<AuthRequests.AuthResponse> register(
             @Valid @RequestBody AuthRequests.RegisterRequest request) {
-        return ResponseEntity.ok(authService.register(request));
+        AuthService.TokenAndUser result = authService.register(request);
+        return ResponseEntity.ok(new AuthRequests.AuthResponse(
+                result.user().username(),
+                result.user().email(),
+                result.user().userId(),
+                result.token()
+        ));
     }
 
     /**
      * POST /api/auth/login
-     * Validates credentials and sets a JWT HttpOnly cookie.
+     * Validates credentials and returns JWT token in response body.
      */
     @PostMapping("/login")
     public ResponseEntity<AuthRequests.AuthResponse> login(
-            @Valid @RequestBody AuthRequests.LoginRequest request,
-            HttpServletResponse response) {
+            @Valid @RequestBody AuthRequests.LoginRequest request) {
         AuthService.TokenAndUser result = authService.login(request);
-        cookieService.setJwtCookie(response, result.token());
-        return ResponseEntity.ok(result.user());
+        return ResponseEntity.ok(new AuthRequests.AuthResponse(
+                result.user().username(),
+                result.user().email(),
+                result.user().userId(),
+                result.token()
+        ));
     }
 
     /**
      * POST /api/auth/logout
-     * Clears the JWT cookie.
+     * Stateless — client just drops the token. Nothing to clear server-side.
      */
     @PostMapping("/logout")
-    public ResponseEntity<Void> logout(HttpServletResponse response) {
-        cookieService.clearJwtCookie(response);
+    public ResponseEntity<Void> logout() {
         return ResponseEntity.ok().build();
     }
 
     /**
      * GET /api/auth/me
      * Returns the currently authenticated user's info.
-     * Spring Security populates @AuthenticationPrincipal from the JWT cookie automatically.
+     * Spring Security populates @AuthenticationPrincipal from the Authorization header.
      */
     @GetMapping("/me")
     public ResponseEntity<AuthRequests.AuthResponse> me(

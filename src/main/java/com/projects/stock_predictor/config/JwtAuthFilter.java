@@ -30,21 +30,32 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
-                                    FilterChain filterChain) throws ServletException, IOException {
+                                    FilterChain filterChain)
+            throws ServletException, IOException {
 
-        // Extract JWT from HttpOnly cookie
-        String token = extractTokenFromCookies(request);
+        String authHeader = request.getHeader("Authorization");
 
-        if (token != null && jwtService.isTokenValid(token)) {
-            String email = jwtService.extractEmail(token);
-            UserDetails userDetails = userDetailsService.loadUserByUsername(email);
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            filterChain.doFilter(request, response);
+            return;
+        }
 
-            UsernamePasswordAuthenticationToken authToken =
-                    new UsernamePasswordAuthenticationToken(
-                            userDetails, null, userDetails.getAuthorities());
-            authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+        String token = authHeader.substring(7);
 
-            SecurityContextHolder.getContext().setAuthentication(authToken);
+        try {
+            String email = jwtService.extractUsername(token);
+            if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+                UserDetails userDetails = userDetailsService.loadUserByUsername(email);
+                if (jwtService.isTokenValid(token, userDetails)) {
+                    UsernamePasswordAuthenticationToken authToken =
+                            new UsernamePasswordAuthenticationToken(
+                                    userDetails, null, userDetails.getAuthorities());
+                    authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                    SecurityContextHolder.getContext().setAuthentication(authToken);
+                }
+            }
+        } catch (Exception e) {
+            // Invalid token — just continue without auth
         }
 
         filterChain.doFilter(request, response);

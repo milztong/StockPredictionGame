@@ -32,6 +32,7 @@ public class AuthRequests {
     public record AuthResponse(
             String username,
             String email,
-            String userId
+            String userId,
+            String token
     ) {}
 }
