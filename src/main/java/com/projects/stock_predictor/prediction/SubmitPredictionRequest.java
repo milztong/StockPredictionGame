@@ -18,6 +18,5 @@ public record SubmitPredictionRequest(
         @NotNull(message = "direction is required")
         Prediction.Direction direction,
 
-        @NotNull(message = "userId is required")
-        UUID userId // Temporary until Phase 3 auth — will be pulled from JWT then
+        UUID userId // Set server-side from JWT — client does not need to send this
 ) {}

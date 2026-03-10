@@ -10,7 +10,7 @@ description = "Stock_Predictor"
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(25)
+        languageVersion = JavaLanguageVersion.of(21)
     }
 }
 
@@ -25,6 +25,12 @@ dependencies {
     // JPA + Hibernate (database)
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
 
+    // Spring Security
+    implementation("org.springframework.boot:spring-boot-starter-security")
+
+    // Validation (@Valid, @NotBlank, @Email, etc.)
+    implementation("org.springframework.boot:spring-boot-starter-validation")
+
     // PostgreSQL driver (Supabase)
     runtimeOnly("org.postgresql:postgresql")
 
@@ -34,7 +40,12 @@ dependencies {
     // Jackson (JSON parsing)
     implementation("com.fasterxml.jackson.core:jackson-databind")
 
-    // Lombok (reduces boilerplate — getters/setters/constructors)
+    // JWT
+    implementation("io.jsonwebtoken:jjwt-api:0.12.6")
+    runtimeOnly("io.jsonwebtoken:jjwt-impl:0.12.6")
+    runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.12.6")
+
+    // Lombok (reduces boilerplate)
     compileOnly("org.projectlombok:lombok")
     annotationProcessor("org.projectlombok:lombok")
 
@@ -46,4 +57,3 @@ dependencies {
 tasks.withType<Test> {
     useJUnitPlatform()
 }
-
