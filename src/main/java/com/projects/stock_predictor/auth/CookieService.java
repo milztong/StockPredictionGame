@@ -22,11 +22,10 @@ public class CookieService {
         cookie.setSecure(false); // Set to true in production (requires HTTPS)
         cookie.setPath("/");
         cookie.setMaxAge((int) (expiryMs / 1000));
-        response.addCookie(cookie);
 
         // Also set SameSite via header (Cookie API doesn't support it directly)
         response.addHeader("Set-Cookie",
-                String.format("jwt=%s; HttpOnly; Path=/; Max-Age=%d; SameSite=Strict",
+                String.format("jwt=%s; HttpOnly; Path=/; Max-Age=%d; SameSite=None",
                         token, (int) (expiryMs / 1000)));
     }
 
@@ -35,6 +34,6 @@ public class CookieService {
      */
     public void clearJwtCookie(HttpServletResponse response) {
         response.addHeader("Set-Cookie",
-                "jwt=; HttpOnly; Path=/; Max-Age=0; SameSite=Strict");
+                "jwt=; HttpOnly; Path=/; Max-Age=0; SameSite=None");
     }
 }
