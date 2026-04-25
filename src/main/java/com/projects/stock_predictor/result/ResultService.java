@@ -109,8 +109,6 @@ public class ResultService {
         );
     }
 
-    // ── Response DTO ──────────────────────────────────────────────────────────
-
     public record ResultResponse(
             UUID resultId,
             UUID predictionId,

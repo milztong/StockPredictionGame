@@ -36,7 +36,7 @@ public class AlphaVantageClient {
         String url = "https://www.alphavantage.co/query"
                 + "?function=TIME_SERIES_DAILY"
                 + "&symbol=" + ticker
-                + "&outputsize=compact" // last 100 trading days — enough for our 90-day window
+                + "&outputsize=compact"
                 + "&apikey=" + apiKey;
 
         Request request = new Request.Builder().url(url).build();

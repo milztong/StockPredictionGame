@@ -29,6 +29,12 @@ public class Stock {
     @Column(name = "is_active", nullable = false)
     private boolean active = true;
 
+    @Column
+    private LocalDateTime blockedUntil;
+
+    public LocalDateTime getBlockedUntil() { return blockedUntil; }
+    public void setBlockedUntil(LocalDateTime blockedUntil) { this.blockedUntil = blockedUntil; }
+
     public Stock(String ticker, String companyName) {
         this.ticker = ticker;
         this.companyName = companyName;

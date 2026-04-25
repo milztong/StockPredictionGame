@@ -77,8 +77,6 @@ public class PredictionService {
         return PredictionResponse.from(prediction);
     }
 
-    // ── Response DTO ──────────────────────────────────────────────────────────
-
     public record PredictionResponse(
             UUID id,
             UUID stockId,

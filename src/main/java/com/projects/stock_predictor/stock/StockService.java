@@ -152,7 +152,16 @@ public class StockService {
                 .toList();
     }
 
-    private void refreshCacheIfNeeded(Stock stock) throws IOException {
+    private synchronized void refreshCacheIfNeeded(Stock stock) throws IOException {
+        // Re-fetch stock from DB to get latest state (important after synchronized block)
+        stock = stockRepository.findById(stock.getId()).orElseThrow();
+
+        // Check persistent circuit breaker — survives restarts
+        if (stock.getBlockedUntil() != null && stock.getBlockedUntil().isAfter(LocalDateTime.now())) {
+            System.out.println("Alpha Vantage blocked until " + stock.getBlockedUntil() + " for " + stock.getTicker());
+            throw new IOException("Alpha Vantage rate limit active until " + stock.getBlockedUntil());
+        }
+
         boolean isStale = stock.getLastFetched() == null ||
                 stock.getLastFetched().isBefore(LocalDateTime.now().minusHours(CACHE_TTL_HOURS));
 
@@ -175,11 +184,23 @@ public class StockService {
                     }
                 }
 
+                // Clear any previous block and update cache timestamp
+                stock.setBlockedUntil(null);
                 stock.setLastFetched(LocalDateTime.now());
                 stockRepository.save(stock);
                 System.out.println("Cache refreshed for " + stock.getTicker());
+
             } catch (Exception e) {
-                System.err.println("Error refreshing cache for " + stock.getTicker() + ": " + e.getMessage());
+                String message = e.getMessage();
+                System.err.println("Error refreshing cache for " + stock.getTicker() + ": " + message);
+
+                // If rate limit hit — persist the block for 24 hours in DB
+                if (message != null && message.contains("limit reached")) {
+                    stock.setBlockedUntil(LocalDateTime.now().plusHours(24));
+                    stockRepository.save(stock);
+                    System.out.println("Circuit breaker activated for " + stock.getTicker() + " until " + stock.getBlockedUntil());
+                }
+
                 throw new IOException(e);
             }
         }
@@ -193,8 +214,6 @@ public class StockService {
         int hash = Math.abs(stockId.hashCode());
         return adjectives[hash % adjectives.length] + " " + nouns[(hash / 10) % nouns.length];
     }
-
-    // ── Response DTOs ────────────────────────────────────────────────────────
 
     public record AnonymousStockResponse(
             UUID stockId,
