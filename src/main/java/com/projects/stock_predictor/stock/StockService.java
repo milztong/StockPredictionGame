@@ -2,6 +2,8 @@ package com.projects.stock_predictor.stock;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.projects.stock_predictor.challenge.DailyChallenge;
+import com.projects.stock_predictor.challenge.DailyChallengeRepository;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -19,12 +21,11 @@ import java.util.UUID;
 @Service
 public class StockService {
 
-    private static final int CACHE_TTL_HOURS = 24;
     private static final int HISTORY_DAYS = 90;
 
     private final StockRepository stockRepository;
     private final StockPriceRepository stockPriceRepository;
-    private final AlphaVantageClient alphaVantageClient;
+    private final DailyChallengeRepository dailyChallengeRepository;
     private final OkHttpClient httpClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -33,39 +34,37 @@ public class StockService {
 
     public StockService(StockRepository stockRepository,
                         StockPriceRepository stockPriceRepository,
-                        AlphaVantageClient alphaVantageClient,
+                        DailyChallengeRepository dailyChallengeRepository,
                         OkHttpClient httpClient) {
         this.stockRepository = stockRepository;
         this.stockPriceRepository = stockPriceRepository;
-        this.alphaVantageClient = alphaVantageClient;
+        this.dailyChallengeRepository = dailyChallengeRepository;
         this.httpClient = httpClient;
     }
 
     /**
-     * Returns the daily challenge stock — same for all users on the same day.
-     * Uses the date as a seed so it rotates deterministically every day.
+     * Gibt die heutige Challenge zurück — immer aus der DB, nie ein API-Call.
+     * Der DailyScheduler hat die Daten morgens bereits vorbereitet.
      */
-    @Transactional
+    @Transactional(readOnly = true)
     public AnonymousStockResponse getDailyChallengeStock() throws IOException {
-        List<Stock> activeStocks = stockRepository.findAllByActiveTrue();
-        if (activeStocks.isEmpty()) {
-            throw new RuntimeException("No active stocks in DB. Add some via POST /api/stocks/add");
-        }
-
-        // Use today's date as seed — same stock all day, rotates daily
-        int dayOfYear = LocalDate.now().getDayOfYear();
-        int year = LocalDate.now().getYear();
-        int seed = year * 1000 + dayOfYear;
-        Stock stock = activeStocks.get(seed % activeStocks.size());
-
-        refreshCacheIfNeeded(stock);
-
         LocalDate today = LocalDate.now();
+
+        DailyChallenge challenge = dailyChallengeRepository.findByChallengeDate(today)
+                .orElseThrow(() -> new IOException(
+                        "Heutige Challenge noch nicht bereit. Der Scheduler läuft um 06:00 UTC."));
+
+        Stock stock = challenge.getStock();
+
         LocalDate visibleFrom = today.minusDays(HISTORY_DAYS);
-        LocalDate visibleUntil = today.minusDays(7);
+        LocalDate visibleUntil = today.minusDays(7); // Letzte 7 Tage werden erst nach Auflösung sichtbar
 
         List<StockPrice> prices = stockPriceRepository
                 .findByStockIdAndDateBetweenOrderByDateAsc(stock.getId(), visibleFrom, visibleUntil);
+
+        if (prices.isEmpty()) {
+            throw new IOException("Keine Preisdaten für die heutige Challenge verfügbar.");
+        }
 
         List<PricePoint> pricePoints = prices.stream()
                 .map(p -> new PricePoint(
@@ -87,17 +86,17 @@ public class StockService {
     }
 
     /**
-     * Dynamically adds a stock by ticker using Alpha Vantage symbol search.
+     * Fügt eine Aktie zur DB hinzu (nur Metadaten — kein Preisfetch hier).
+     * Preisdaten werden beim ersten Scheduler-Lauf geholt, wenn diese Aktie ausgewählt wird.
      */
     @Transactional
     public void addStockByTicker(String ticker, String name) throws IOException {
         if (stockRepository.findByTicker(ticker).isPresent()) {
-            throw new IllegalArgumentException("Stock already exists: " + ticker);
+            throw new IllegalArgumentException("Aktie existiert bereits: " + ticker);
         }
 
         String companyName = name;
 
-        // Only call Alpha Vantage search if no name was provided
         if (companyName == null || companyName.isBlank()) {
             String url = "https://www.alphavantage.co/query"
                     + "?function=SYMBOL_SEARCH"
@@ -107,17 +106,17 @@ public class StockService {
             Request request = new Request.Builder().url(url).build();
             try (Response response = httpClient.newCall(request).execute()) {
                 if (!response.isSuccessful() || response.body() == null) {
-                    throw new IOException("Alpha Vantage search failed");
+                    throw new IOException("Alpha Vantage Suche fehlgeschlagen");
                 }
                 String json = response.body().string();
                 JsonNode root = objectMapper.readTree(json);
                 JsonNode matches = root.get("bestMatches");
 
                 if (matches == null || matches.isEmpty()) {
-                    throw new IllegalArgumentException("Ticker not found: " + ticker);
+                    throw new IllegalArgumentException("Ticker nicht gefunden: " + ticker);
                 }
 
-                companyName = ticker; // fallback
+                companyName = ticker; // Fallback
                 for (JsonNode match : matches) {
                     if (match.get("1. symbol").asText().equalsIgnoreCase(ticker)) {
                         companyName = match.get("2. name").asText();
@@ -128,13 +127,13 @@ public class StockService {
         }
 
         stockRepository.save(new Stock(ticker, companyName));
-        System.out.println("Added stock: " + ticker + " — " + companyName);
+        System.out.println("Aktie hinzugefügt: " + ticker + " — " + companyName);
     }
 
     /**
-     * Returns full price history including last 7 days — used on reveal page.
+     * Vollständige Preishistorie inkl. letzter 7 Tage — für die Reveal-Seite nach Auflösung.
      */
-    @Transactional
+    @Transactional(readOnly = true)
     public List<PricePoint> getFullHistory(UUID stockId) {
         LocalDate from = LocalDate.now().minusDays(HISTORY_DAYS);
         LocalDate to = LocalDate.now();
@@ -150,60 +149,6 @@ public class StockService {
                         p.getVolume()
                 ))
                 .toList();
-    }
-
-    private synchronized void refreshCacheIfNeeded(Stock stock) throws IOException {
-        // Re-fetch stock from DB to get latest state (important after synchronized block)
-        stock = stockRepository.findById(stock.getId()).orElseThrow();
-
-        // Check persistent circuit breaker — survives restarts
-        if (stock.getBlockedUntil() != null && stock.getBlockedUntil().isAfter(LocalDateTime.now())) {
-            System.out.println("Alpha Vantage blocked until " + stock.getBlockedUntil() + " for " + stock.getTicker());
-            throw new IOException("Alpha Vantage rate limit active until " + stock.getBlockedUntil());
-        }
-
-        boolean isStale = stock.getLastFetched() == null ||
-                stock.getLastFetched().isBefore(LocalDateTime.now().minusHours(CACHE_TTL_HOURS));
-
-        if (isStale) {
-            System.out.println("Cache stale for " + stock.getTicker() + ", fetching...");
-            try {
-                List<AlphaVantageClient.PriceData> prices = alphaVantageClient.fetchDailyPrices(stock.getTicker());
-                System.out.println("Fetched " + prices.size() + " price points for " + stock.getTicker());
-
-                for (AlphaVantageClient.PriceData data : prices) {
-                    try {
-                        if (!stockPriceRepository.existsByStockIdAndDate(stock.getId(), data.date())) {
-                            stockPriceRepository.save(new StockPrice(
-                                    stock, data.date(), data.open(), data.high(),
-                                    data.low(), data.close(), data.volume()
-                            ));
-                        }
-                    } catch (Exception e) {
-                        System.err.println("Failed to save price for " + data.date() + ": " + e.getMessage());
-                    }
-                }
-
-                // Clear any previous block and update cache timestamp
-                stock.setBlockedUntil(null);
-                stock.setLastFetched(LocalDateTime.now());
-                stockRepository.save(stock);
-                System.out.println("Cache refreshed for " + stock.getTicker());
-
-            } catch (Exception e) {
-                String message = e.getMessage();
-                System.err.println("Error refreshing cache for " + stock.getTicker() + ": " + message);
-
-                // If rate limit hit — persist the block for 24 hours in DB
-                if (message != null && message.contains("limit reached")) {
-                    stock.setBlockedUntil(LocalDateTime.now().plusHours(24));
-                    stockRepository.save(stock);
-                    System.out.println("Circuit breaker activated for " + stock.getTicker() + " until " + stock.getBlockedUntil());
-                }
-
-                throw new IOException(e);
-            }
-        }
     }
 
     public String generateCodename(UUID stockId) {

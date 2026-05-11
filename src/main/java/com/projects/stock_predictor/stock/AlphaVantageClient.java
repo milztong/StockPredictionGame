@@ -28,10 +28,6 @@ public class AlphaVantageClient {
         this.objectMapper = new ObjectMapper();
     }
 
-    /**
-     * Fetches daily OHLCV data for a given ticker from Alpha Vantage.
-     * Returns a list of raw price data (not yet linked to a Stock entity).
-     */
     public List<PriceData> fetchDailyPrices(String ticker) throws IOException {
         String url = "https://www.alphavantage.co/query"
                 + "?function=TIME_SERIES_DAILY"
@@ -54,7 +50,6 @@ public class AlphaVantageClient {
     private List<PriceData> parseResponse(String json, String ticker) throws IOException {
         JsonNode root = objectMapper.readTree(json);
 
-        // Alpha Vantage returns an error message node if something went wrong
         if (root.has("Note") || root.has("Information")) {
             throw new IOException("Alpha Vantage API limit reached or invalid key for ticker: " + ticker);
         }
@@ -81,7 +76,6 @@ public class AlphaVantageClient {
         return prices;
     }
 
-    // Simple record to hold raw parsed data before saving to DB
     public record PriceData(
             LocalDate date,
             BigDecimal open,

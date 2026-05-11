@@ -17,11 +17,6 @@ public class StockController {
         this.stockService = stockService;
     }
 
-    /**
-     * GET /api/stocks/daily
-     * Returns today's challenge stock — same for all users.
-     * Rotates automatically every day.
-     */
     @GetMapping("/daily")
     public ResponseEntity<StockService.AnonymousStockResponse> getDailyStock() {
         try {
@@ -31,10 +26,6 @@ public class StockController {
         }
     }
 
-    /**
-     * POST /api/stocks/add?ticker=AAPL
-     * Dynamically adds a stock by ticker — no hardcoded list needed.
-     */
     @PostMapping("/add")
     public ResponseEntity<String> addStock(
             @RequestParam String ticker,
@@ -49,10 +40,6 @@ public class StockController {
         }
     }
 
-    /**
-     * GET /api/stocks/{stockId}/history
-     * Full price history — used on reveal page.
-     */
     @GetMapping("/{stockId}/history")
     public ResponseEntity<List<StockService.PricePoint>> getFullHistory(@PathVariable UUID stockId) {
         return ResponseEntity.ok(stockService.getFullHistory(stockId));

@@ -12,10 +12,8 @@ public interface StockRepository extends JpaRepository<Stock, UUID> {
 
     Optional<Stock> findByTicker(String ticker);
 
-    // Used by daily challenge — returns all active stocks, ordered for deterministic selection
     List<Stock> findAllByActiveTrueOrderByTickerAsc();
 
-    // Alias used in StockService
     default List<Stock> findAllByActiveTrue() {
         return findAllByActiveTrueOrderByTickerAsc();
     }
