@@ -1,6 +1,7 @@
 package com.projects.stock_predictor.challenge;
 
 import com.projects.stock_predictor.stock.StockService;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -13,6 +14,9 @@ public class DailyChallengeController {
 
     private final DailyChallengeService dailyChallengeService;
     private final StockService stockService;
+
+    @Value("${admin.trigger.secret}")
+    private String triggerSecret;
 
     public DailyChallengeController(DailyChallengeService dailyChallengeService,
                                     StockService stockService) {
@@ -29,9 +33,11 @@ public class DailyChallengeController {
         }
     }
 
-    /** Manueller Trigger — für ersten Start oder Debugging */
     @PostMapping("/trigger")
-    public ResponseEntity<String> triggerManually() {
+    public ResponseEntity<String> triggerManually(@RequestParam String secret) {
+        if (!triggerSecret.equals(secret)) {
+            return ResponseEntity.status(403).body("Ungültiges Secret.");
+        }
         LocalDate today = LocalDate.now();
         try {
             dailyChallengeService.setupTodayChallenge(today);
