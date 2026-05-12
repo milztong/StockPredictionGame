@@ -49,8 +49,6 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/register", "/api/auth/login").permitAll()
                         .requestMatchers("/api/leaderboard").permitAll()
                         .requestMatchers("/api/challenge/today", "/api/challenge/trigger").permitAll()
-                        .requestMatchers("/api/challenge/trigger").hasRole("ADMIN")
-                        // Everything else requires a valid JWT cookie
                         .anyRequest().authenticated()
                 )
                 .authenticationProvider(authenticationProvider())
@@ -91,4 +89,5 @@ public class SecurityConfig {
         return new BCryptPasswordEncoder();
     }
 }
+
 
