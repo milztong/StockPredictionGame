@@ -14,6 +14,8 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
+import static java.rmi.server.LogStream.log;
+
 @Component
 public class AlphaVantageClient {
 
@@ -51,6 +53,8 @@ public class AlphaVantageClient {
         JsonNode root = objectMapper.readTree(json);
 
         if (root.has("Note") || root.has("Information")) {
+            String msg = root.has("Note") ? root.get("Note").asText() : root.get("Information").asText();
+            log("Alpha Vantage Antwort: " + msg);
             throw new IOException("Alpha Vantage API limit reached or invalid key for ticker: " + ticker);
         }
 

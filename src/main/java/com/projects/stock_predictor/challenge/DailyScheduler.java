@@ -5,10 +5,6 @@ import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
 
-/**
- * Nur noch der Einstiegspunkt — kein @Transactional hier.
- * Alle Logik liegt in DailyChallengeService, damit Spring-AOP-Proxy greift.
- */
 @Component
 public class DailyScheduler {
 
@@ -18,7 +14,7 @@ public class DailyScheduler {
         this.dailyChallengeService = dailyChallengeService;
     }
 
-    @Scheduled(cron = "0 0 6 * * *")
+    @Scheduled(cron = "0 5 6 * * *")
     public void runDailyJob() {
         LocalDate today = LocalDate.now();
         System.out.println("[DailyScheduler] === Gestartet für " + today + " ===");

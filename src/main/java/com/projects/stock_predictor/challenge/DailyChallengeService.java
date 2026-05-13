@@ -19,10 +19,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-/**
- * Transactional-Logik für den DailyScheduler — ausgelagert in eigenen Service,
- * damit Spring-AOP-Proxy korrekt funktioniert (Self-Invocation Problem).
- */
 @Service
 public class DailyChallengeService {
 
