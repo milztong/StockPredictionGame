@@ -14,7 +14,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -29,7 +28,7 @@ public class StockService {
     private final OkHttpClient httpClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    @Value("${alphavantage.api.key}")
+    @Value("${polygon.api.key}")
     private String apiKey;
 
     public StockService(StockRepository stockRepository,
@@ -42,10 +41,6 @@ public class StockService {
         this.httpClient = httpClient;
     }
 
-    /**
-     * Gibt die heutige Challenge zurück — immer aus der DB, nie ein API-Call.
-     * Der DailyScheduler hat die Daten morgens bereits vorbereitet.
-     */
     @Transactional(readOnly = true)
     public AnonymousStockResponse getDailyChallengeStock() throws IOException {
         LocalDate today = LocalDate.now();
@@ -85,10 +80,6 @@ public class StockService {
         );
     }
 
-    /**
-     * Fügt eine Aktie zur DB hinzu (nur Metadaten — kein Preisfetch hier).
-     * Preisdaten werden beim ersten Scheduler-Lauf geholt, wenn diese Aktie ausgewählt wird.
-     */
     @Transactional
     public void addStockByTicker(String ticker, String name) throws IOException {
         if (stockRepository.findByTicker(ticker).isPresent()) {
@@ -98,31 +89,24 @@ public class StockService {
         String companyName = name;
 
         if (companyName == null || companyName.isBlank()) {
-            String url = "https://www.alphavantage.co/query"
-                    + "?function=SYMBOL_SEARCH"
-                    + "&keywords=" + ticker
-                    + "&apikey=" + apiKey;
+            // Polygon.io Ticker Details: GET /v3/reference/tickers/{ticker}
+            String url = "https://api.polygon.io/v3/reference/tickers/"
+                    + ticker.toUpperCase()
+                    + "?apiKey=" + apiKey;
 
             Request request = new Request.Builder().url(url).build();
             try (Response response = httpClient.newCall(request).execute()) {
                 if (!response.isSuccessful() || response.body() == null) {
-                    throw new IOException("Alpha Vantage Suche fehlgeschlagen");
+                    throw new IOException("Polygon.io Suche fehlgeschlagen");
                 }
                 String json = response.body().string();
                 JsonNode root = objectMapper.readTree(json);
-                JsonNode matches = root.get("bestMatches");
 
-                if (matches == null || matches.isEmpty()) {
+                if (!"OK".equals(root.path("status").asText())) {
                     throw new IllegalArgumentException("Ticker nicht gefunden: " + ticker);
                 }
 
-                companyName = ticker; // Fallback
-                for (JsonNode match : matches) {
-                    if (match.get("1. symbol").asText().equalsIgnoreCase(ticker)) {
-                        companyName = match.get("2. name").asText();
-                        break;
-                    }
-                }
+                companyName = root.path("results").path("name").asText(ticker);
             }
         }
 
@@ -130,9 +114,6 @@ public class StockService {
         System.out.println("Aktie hinzugefügt: " + ticker + " — " + companyName);
     }
 
-    /**
-     * Vollständige Preishistorie inkl. letzter 7 Tage — für die Reveal-Seite nach Auflösung.
-     */
     @Transactional(readOnly = true)
     public List<PricePoint> getFullHistory(UUID stockId) {
         LocalDate from = LocalDate.now().minusDays(HISTORY_DAYS);

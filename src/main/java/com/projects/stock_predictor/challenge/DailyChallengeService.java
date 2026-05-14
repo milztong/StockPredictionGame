@@ -3,7 +3,7 @@ package com.projects.stock_predictor.challenge;
 import com.projects.stock_predictor.prediction.Prediction;
 import com.projects.stock_predictor.prediction.PredictionRepository;
 import com.projects.stock_predictor.result.ResultService;
-import com.projects.stock_predictor.stock.AlphaVantageClient;
+import com.projects.stock_predictor.stock.PolygonClient;
 import com.projects.stock_predictor.stock.Stock;
 import com.projects.stock_predictor.stock.StockPrice;
 import com.projects.stock_predictor.stock.StockPriceRepository;
@@ -29,20 +29,20 @@ public class DailyChallengeService {
     private final StockRepository stockRepository;
     private final StockPriceRepository stockPriceRepository;
     private final PredictionRepository predictionRepository;
-    private final AlphaVantageClient alphaVantageClient;
+    private final PolygonClient polygonClient;
     private final ResultService resultService;
 
     public DailyChallengeService(DailyChallengeRepository dailyChallengeRepository,
                                  StockRepository stockRepository,
                                  StockPriceRepository stockPriceRepository,
                                  PredictionRepository predictionRepository,
-                                 AlphaVantageClient alphaVantageClient,
+                                 PolygonClient polygonClient,
                                  ResultService resultService) {
         this.dailyChallengeRepository = dailyChallengeRepository;
         this.stockRepository = stockRepository;
         this.stockPriceRepository = stockPriceRepository;
         this.predictionRepository = predictionRepository;
-        this.alphaVantageClient = alphaVantageClient;
+        this.polygonClient = polygonClient;
         this.resultService = resultService;
     }
 
@@ -137,7 +137,7 @@ public class DailyChallengeService {
     }
 
     private void fetchAndStorePrices(Stock stock) throws IOException {
-        List<AlphaVantageClient.PriceData> prices = alphaVantageClient.fetchDailyPrices(stock.getTicker());
+        List<PolygonClient.PriceData> prices = polygonClient.fetchDailyPrices(stock.getTicker());
         LocalDate from = LocalDate.now().minusDays(HISTORY_DAYS);
         Set<LocalDate> existingDates = stockPriceRepository
                 .findExistingDatesByStockIdSince(stock.getId(), from);
