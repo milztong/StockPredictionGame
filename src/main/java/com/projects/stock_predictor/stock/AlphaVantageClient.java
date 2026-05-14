@@ -55,7 +55,7 @@ public class AlphaVantageClient {
         if (root.has("Note") || root.has("Information")) {
             String msg = root.has("Note") ? root.get("Note").asText() : root.get("Information").asText();
             log("Alpha Vantage Antwort: " + msg);
-            throw new IOException("Alpha Vantage API limit reached or invalid key for ticker: " + ticker);
+            throw new IOException("Alpha Vantage API limit reached or invalid key for ticker: " + ticker + ". Detailed message: " + msg);
         }
 
         JsonNode timeSeries = root.get("Time Series (Daily)");
