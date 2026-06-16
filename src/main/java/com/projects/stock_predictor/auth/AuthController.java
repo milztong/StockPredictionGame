@@ -1,70 +1,44 @@
 package com.projects.stock_predictor.auth;
 
-import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Map;
+
+/**
+ * These endpoints are no longer active.
+ *
+ * As of Stufe 3, StockPredictor is a microservice in the PulseStack ecosystem.
+ * Authentication is handled by PulseStack's auth-service.
+ *
+ * Register / Login:  POST http://localhost:8084/api/v1/auth/register
+ *                    POST http://localhost:8084/api/v1/auth/login
+ *
+ * The returned JWT works for both PulseStack and StockPredictor (shared secret).
+ */
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
 
-    private final AuthService authService;
+    private static final Map<String, String> MOVED_RESPONSE = Map.of(
+            "message", "Auth has moved to PulseStack auth-service.",
+            "register", "POST http://localhost:8084/api/v1/auth/register",
+            "login",    "POST http://localhost:8084/api/v1/auth/login"
+    );
 
-    public AuthController(AuthService authService) {
-        this.authService = authService;
-    }
-
-    /**
-     * POST /api/auth/register
-     * Creates a new user and returns JWT token in response body.
-     */
     @PostMapping("/register")
-    public ResponseEntity<AuthRequests.AuthResponse> register(
-            @Valid @RequestBody AuthRequests.RegisterRequest request) {
-        AuthService.TokenAndUser result = authService.register(request);
-        return ResponseEntity.ok(new AuthRequests.AuthResponse(
-                result.user().username(),
-                result.user().email(),
-                result.user().userId(),
-                result.token()
-        ));
+    public ResponseEntity<Map<String, String>> register() {
+        return ResponseEntity.status(HttpStatus.GONE).body(MOVED_RESPONSE);
     }
 
-    /**
-     * POST /api/auth/login
-     * Validates credentials and returns JWT token in response body.
-     */
     @PostMapping("/login")
-    public ResponseEntity<AuthRequests.AuthResponse> login(
-            @Valid @RequestBody AuthRequests.LoginRequest request) {
-        AuthService.TokenAndUser result = authService.login(request);
-        return ResponseEntity.ok(new AuthRequests.AuthResponse(
-                result.user().username(),
-                result.user().email(),
-                result.user().userId(),
-                result.token()
-        ));
+    public ResponseEntity<Map<String, String>> login() {
+        return ResponseEntity.status(HttpStatus.GONE).body(MOVED_RESPONSE);
     }
 
-    /**
-     * POST /api/auth/logout
-     * Stateless — client just drops the token. Nothing to clear server-side.
-     */
     @PostMapping("/logout")
     public ResponseEntity<Void> logout() {
-        return ResponseEntity.ok().build();
-    }
-
-    /**
-     * GET /api/auth/me
-     * Returns the currently authenticated user's info.
-     * Spring Security populates @AuthenticationPrincipal from the Authorization header.
-     */
-    @GetMapping("/me")
-    public ResponseEntity<AuthRequests.AuthResponse> me(
-            @AuthenticationPrincipal UserDetails userDetails) {
-        return ResponseEntity.ok(authService.getMe(userDetails.getUsername()));
+        return ResponseEntity.ok().build(); // stateless — nothing to do
     }
 }

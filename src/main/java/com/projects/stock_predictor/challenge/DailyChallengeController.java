@@ -33,6 +33,18 @@ public class DailyChallengeController {
         }
     }
 
+    /**
+     * GET /api/challenge/resolved-latest
+     * Die zuletzt aufgelöste Tages-Challenge — unabhängig davon, ob der
+     * eingeloggte User selbst eine Vorhersage dazu abgegeben hat.
+     */
+    @GetMapping("/resolved-latest")
+    public ResponseEntity<?> getLatestResolvedChallenge() {
+        return stockService.getLatestResolvedChallenge()
+                .<ResponseEntity<?>>map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.noContent().build());
+    }
+
     @PostMapping("/trigger")
     public ResponseEntity<String> triggerManually(@RequestParam String secret) {
         if (!triggerSecret.equals(secret)) {

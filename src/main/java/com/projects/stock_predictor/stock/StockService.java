@@ -15,6 +15,7 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -114,6 +115,31 @@ public class StockService {
         System.out.println("Aktie hinzugefügt: " + ticker + " — " + companyName);
     }
 
+    /**
+     * Die zuletzt aufgelöste Tages-Challenge — Ticker/Firmenname werden enthüllt,
+     * unabhängig davon ob der aktuelle User selbst eine Vorhersage dazu abgegeben hat.
+     */
+    @Transactional(readOnly = true)
+    public Optional<ResolvedChallengeResponse> getLatestResolvedChallenge() {
+        return dailyChallengeRepository.findFirstByResolvedTrueOrderByChallengeDateDesc()
+                .map(challenge -> {
+                    Stock stock = challenge.getStock();
+                    List<PricePoint> prices = getFullHistory(stock.getId());
+                    BigDecimal currentPrice = prices.isEmpty()
+                            ? null
+                            : prices.get(prices.size() - 1).close();
+
+                    return new ResolvedChallengeResponse(
+                            challenge.getChallengeDate().toString(),
+                            stock.getId(),
+                            stock.getTicker(),
+                            stock.getCompanyName(),
+                            currentPrice,
+                            prices
+                    );
+                });
+    }
+
     @Transactional(readOnly = true)
     public List<PricePoint> getFullHistory(UUID stockId) {
         LocalDate from = LocalDate.now().minusDays(HISTORY_DAYS);
@@ -155,5 +181,14 @@ public class StockService {
             BigDecimal low,
             BigDecimal close,
             Long volume
+    ) {}
+
+    public record ResolvedChallengeResponse(
+            String challengeDate,
+            UUID stockId,
+            String ticker,
+            String companyName,
+            BigDecimal currentPrice,
+            List<PricePoint> prices
     ) {}
 }

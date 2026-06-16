@@ -3,7 +3,6 @@ package com.projects.stock_predictor.config;
 import com.projects.stock_predictor.user.UserDetailsServiceImpl;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
-import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -14,8 +13,14 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.util.Arrays;
 
+/**
+ * Validates JWT tokens issued by PulseStack's auth-service.
+ *
+ * Token subject = PulseStack username.
+ * On first appearance of a new user, a local User row is created automatically
+ * (lazy SSO — no registration required in StockPredictor).
+ */
 @Component
 public class JwtAuthFilter extends OncePerRequestFilter {
 
@@ -34,7 +39,6 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
 
         String authHeader = request.getHeader("Authorization");
-
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             filterChain.doFilter(request, response);
             return;
@@ -43,10 +47,14 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         String token = authHeader.substring(7);
 
         try {
-            String email = jwtService.extractUsername(token);
-            if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                UserDetails userDetails = userDetailsService.loadUserByUsername(email);
-                if (jwtService.isTokenValid(token, userDetails)) {
+            // PulseStack auth-service puts username as the JWT subject
+            String username = jwtService.extractUsername(token);
+
+            if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+                if (!jwtService.isExpired(token)) {
+                    // Lazy-create local User if this is first time we see this PulseStack user
+                    UserDetails userDetails = userDetailsService.loadOrCreateByUsername(username);
+
                     UsernamePasswordAuthenticationToken authToken =
                             new UsernamePasswordAuthenticationToken(
                                     userDetails, null, userDetails.getAuthorities());
@@ -55,18 +63,9 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 }
             }
         } catch (Exception e) {
-            // Invalid token — just continue without auth
+            // Invalid or expired token — continue without authentication
         }
 
         filterChain.doFilter(request, response);
-    }
-
-    private String extractTokenFromCookies(HttpServletRequest request) {
-        if (request.getCookies() == null) return null;
-        return Arrays.stream(request.getCookies())
-                .filter(c -> "jwt".equals(c.getName()))
-                .map(Cookie::getValue)
-                .findFirst()
-                .orElse(null);
     }
 }

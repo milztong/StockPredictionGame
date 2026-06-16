@@ -56,16 +56,27 @@ public class JwtService {
         return UUID.fromString(extractClaims(token).get("userId", String.class));
     }
 
+    /**
+     * Returns the JWT subject.
+     * PulseStack auth-service sets subject = username.
+     */
     public String extractUsername(String token) {
-        return extractEmail(token); // alias so JwtAuthFilter works
+        return extractClaims(token).getSubject();
     }
 
+    public boolean isExpired(String token) {
+        try {
+            return extractClaims(token).getExpiration().before(new Date());
+        } catch (Exception e) {
+            return true;
+        }
+    }
+
+    /** @deprecated Use isExpired() — password-based validation no longer needed. */
+    @Deprecated
     public boolean isTokenValid(String token, UserDetails userDetails) {
         try {
-            String email = extractEmail(token);
-            Claims claims = extractClaims(token);
-            boolean notExpired = claims.getExpiration().after(new Date());
-            return email.equals(userDetails.getUsername()) && notExpired;
+            return extractUsername(token).equals(userDetails.getUsername()) && !isExpired(token);
         } catch (Exception e) {
             return false;
         }

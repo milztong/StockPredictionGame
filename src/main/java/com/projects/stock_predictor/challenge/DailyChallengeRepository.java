@@ -14,6 +14,8 @@ public interface DailyChallengeRepository extends JpaRepository<DailyChallenge, 
 
     Optional<DailyChallenge> findByChallengeDate(LocalDate date);
 
+    Optional<DailyChallenge> findFirstByResolvedTrueOrderByChallengeDateDesc();
+
     // Alle ungelösten Challenges deren Auflösungsdatum (challengeDate + 7 Tage) heute oder früher ist
     @Query("SELECT dc FROM DailyChallenge dc WHERE dc.resolved = false AND dc.challengeDate <= :cutoff")
     List<DailyChallenge> findUnresolvedBefore(LocalDate cutoff);

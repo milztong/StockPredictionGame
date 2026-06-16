@@ -23,7 +23,8 @@ public class User {
     @Column(nullable = false, unique = true)
     private String email;
 
-    @Column(name = "password_hash", nullable = false)
+    /** Null for SSO users created automatically from PulseStack JWT. */
+    @Column(name = "password_hash", nullable = true)
     private String passwordHash;
 
     @Column(name = "created_at", nullable = false)
@@ -32,9 +33,17 @@ public class User {
     @Column(name = "total_score", nullable = false)
     private int totalScore = 0;
 
+    /** Legacy constructor — used when StockPredictor had its own auth. */
     public User(String username, String email, String passwordHash) {
         this.username = username;
         this.email = email;
         this.passwordHash = passwordHash;
+    }
+
+    /** SSO constructor — user is created automatically from a PulseStack JWT. */
+    public User(String username) {
+        this.username = username;
+        this.email = username + "@pulsestack.sso";  // synthetic, never used for login
+        this.passwordHash = null;
     }
 }

@@ -2,8 +2,11 @@ package com.projects.stock_predictor.result;
 
 import com.projects.stock_predictor.prediction.Prediction;
 import com.projects.stock_predictor.prediction.PredictionRepository;
+import com.projects.stock_predictor.pulsestack.PulseStackEvent;
+import com.projects.stock_predictor.pulsestack.PulseStackNotifier;
 import com.projects.stock_predictor.stock.StockPrice;
 import com.projects.stock_predictor.stock.StockPriceRepository;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,13 +20,19 @@ public class ResultService {
     private final ResultRepository resultRepository;
     private final PredictionRepository predictionRepository;
     private final StockPriceRepository stockPriceRepository;
+    private final PulseStackNotifier pulseStackNotifier;
+
+    @Value("${pulsestack.predictor.base-url:http://localhost:8080}")
+    private String predictorBaseUrl;
 
     public ResultService(ResultRepository resultRepository,
                          PredictionRepository predictionRepository,
-                         StockPriceRepository stockPriceRepository) {
+                         StockPriceRepository stockPriceRepository,
+                         @org.springframework.lang.Nullable PulseStackNotifier pulseStackNotifier) {
         this.resultRepository = resultRepository;
         this.predictionRepository = predictionRepository;
         this.stockPriceRepository = stockPriceRepository;
+        this.pulseStackNotifier = pulseStackNotifier;
     }
 
     /**
@@ -78,6 +87,28 @@ public class ResultService {
         predictionRepository.save(prediction);
 
         System.out.printf("Resolved prediction %s — score: %d/150%n", prediction.getId(), totalScore);
+
+        // PulseStack benachrichtigen — jetzt mit echtem Ticker (wird erst hier revealed)
+        if (pulseStackNotifier != null) {
+            String ticker   = prediction.getStock().getTicker();
+            String codename = prediction.getStockCodename();
+            String icon     = result.isDirectionCorrect() ? "✅" : "❌";
+            String dirLabel = prediction.getDirection() == Prediction.Direction.UP ? "↑" : "↓";
+            String dirResult = result.isDirectionCorrect() ? "Korrekt!" : "Falsch.";
+            String title = String.format(
+                    "%s [%s / %s] Aufgelöst: %s %s — Score: %d/150 (Richtung: %d + Genauigkeit: %d)",
+                    icon, ticker, codename, dirLabel, dirResult,
+                    totalScore, directionScore, accuracyScore
+            );
+            pulseStackNotifier.send(PulseStackEvent.of(
+                    "predictions",
+                    "result-" + prediction.getId(),
+                    title,
+                    predictorBaseUrl + "/predictions/" + prediction.getId(),
+                    null,
+                    totalScore
+            ));
+        }
     }
 
     /**

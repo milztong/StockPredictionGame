@@ -1,10 +1,13 @@
 package com.projects.stock_predictor.prediction;
 
+import com.projects.stock_predictor.pulsestack.PulseStackEvent;
+import com.projects.stock_predictor.pulsestack.PulseStackNotifier;
 import com.projects.stock_predictor.stock.Stock;
 import com.projects.stock_predictor.stock.StockPrice;
 import com.projects.stock_predictor.stock.StockPriceRepository;
 import com.projects.stock_predictor.stock.StockRepository;
 import com.projects.stock_predictor.stock.StockService;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,15 +23,22 @@ public class PredictionService {
     private final StockRepository stockRepository;
     private final StockPriceRepository stockPriceRepository;
     private final StockService stockService;
+    private final PulseStackNotifier pulseStackNotifier;
+
+    @Value("${pulsestack.predictor.base-url:http://localhost:8080}")
+    private String predictorBaseUrl;
 
     public PredictionService(PredictionRepository predictionRepository,
                              StockRepository stockRepository,
                              StockPriceRepository stockPriceRepository,
-                             StockService stockService) {
+                             StockService stockService,
+                             // Optional — null wenn pulsestack.ingest.url nicht gesetzt
+                             @org.springframework.lang.Nullable PulseStackNotifier pulseStackNotifier) {
         this.predictionRepository = predictionRepository;
         this.stockRepository = stockRepository;
         this.stockPriceRepository = stockPriceRepository;
         this.stockService = stockService;
+        this.pulseStackNotifier = pulseStackNotifier;
     }
 
     @Transactional
@@ -61,6 +71,23 @@ public class PredictionService {
         prediction.setStockCodename(stockService.generateCodename(stock.getId()));
 
         Prediction saved = predictionRepository.save(prediction);
+
+        // PulseStack benachrichtigen — fire-and-forget, kein Fehler wenn nicht erreichbar
+        if (pulseStackNotifier != null) {
+            String direction = saved.getDirection() == Prediction.Direction.UP ? "↑ UP" : "↓ DOWN";
+            String title = String.format("🎯 [%s] Neue Vorhersage: %s — Ziel: $%s (Basis: $%s) in 7 Tagen",
+                    saved.getStockCodename(), direction,
+                    saved.getPredictedPrice(), saved.getBasePrice());
+            pulseStackNotifier.send(PulseStackEvent.of(
+                    "predictions",
+                    "prediction-" + saved.getId(),
+                    title,
+                    predictorBaseUrl + "/predictions/" + saved.getId(),
+                    null,
+                    null
+            ));
+        }
+
         return PredictionResponse.from(saved);
     }
 
