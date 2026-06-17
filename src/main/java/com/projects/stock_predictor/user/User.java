@@ -44,6 +44,6 @@ public class User {
     public User(String username) {
         this.username = username;
         this.email = username + "@pulsestack.sso";  // synthetic, never used for login
-        this.passwordHash = null;
+        this.passwordHash = "{noop}__sso__";  // placeholder — SSO users never log in with password
     }
 }
