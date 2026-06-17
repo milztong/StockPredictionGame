@@ -1,5 +1,6 @@
 package com.projects.stock_predictor.user;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -36,12 +37,18 @@ public class UserDetailsServiceImpl implements UserDetailsService {
      */
     @Transactional
     public UserDetails loadOrCreateByUsername(String username) {
-        User user = userRepository.findByUsername(username)
-                .orElseGet(() -> {
-                    User ssoUser = new User(username);
-                    return userRepository.save(ssoUser);
-                });
-        return toUserDetails(user);
+        return toUserDetails(userRepository.findByUsername(username)
+                .orElseGet(() -> createSsoUser(username)));
+    }
+
+    private User createSsoUser(String username) {
+        try {
+            return userRepository.saveAndFlush(new User(username));
+        } catch (DataIntegrityViolationException e) {
+            // Another thread inserted concurrently — just load the existing row
+            return userRepository.findByUsername(username)
+                    .orElseThrow(() -> new UsernameNotFoundException("User not found after conflict: " + username));
+        }
     }
 
     private UserDetails toUserDetails(User user) {
