@@ -70,7 +70,8 @@ public class PredictionController {
     }
 
     private UUID resolveUserId(UserDetails userDetails) {
-        return userRepository.findByEmail(userDetails.getUsername())
+        // userDetails.getUsername() is the PulseStack username (JWT subject), not the email.
+        return userRepository.findByUsername(userDetails.getUsername())
                 .orElseThrow(() -> new IllegalStateException("Authenticated user not found in DB"))
                 .getId();
     }
