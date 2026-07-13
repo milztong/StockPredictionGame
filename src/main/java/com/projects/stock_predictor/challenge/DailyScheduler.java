@@ -1,5 +1,6 @@
 package com.projects.stock_predictor.challenge;
 
+import jakarta.annotation.PostConstruct;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -12,6 +13,16 @@ public class DailyScheduler {
 
     public DailyScheduler(DailyChallengeService dailyChallengeService) {
         this.dailyChallengeService = dailyChallengeService;
+    }
+
+    @PostConstruct
+    public void runOnStartup() {
+        LocalDate today = LocalDate.now();
+        System.out.println("[DailyScheduler] Startup-Check für " + today);
+        dailyChallengeService.setupTodayChallenge(today);
+        dailyChallengeService.fetchResolutionPrices(today);
+        dailyChallengeService.resolveExpiredPredictions(today);
+        System.out.println("[DailyScheduler] Startup-Check abgeschlossen.");
     }
 
     @Scheduled(cron = "0 5 6 * * *")
