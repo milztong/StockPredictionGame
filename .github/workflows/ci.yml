@@ -60,8 +60,17 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
     steps:
+      # Deploy ist best-effort und darf die gruene Test-Pipeline nicht rot faerben:
+      # ein fehlendes Secret wird uebersprungen, ein fehlschlagender Hook (z. B.
+      # suspendierter Render-Service) wird als Warnung im Step-Log sichtbar.
       - name: Trigger Render deploy
-        run: |
-          curl -s --fail-with-body \
-            "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
+        continue-on-error: true
         timeout-minutes: 2
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "::notice::RENDER_DEPLOY_HOOK_URL not set — skipping deploy."
+            exit 0
+          fi
+          curl -sS --fail-with-body --max-time 60 "$HOOK"

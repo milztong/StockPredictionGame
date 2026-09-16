@@ -29,6 +29,9 @@ dependencies {
     // Spring Security
     implementation("org.springframework.boot:spring-boot-starter-security")
 
+    // Health endpoint used by Render and the external keep-alive workflow
+    implementation("org.springframework.boot:spring-boot-starter-actuator")
+
     // Validation (@Valid, @NotBlank, @Email, etc.)
     implementation("org.springframework.boot:spring-boot-starter-validation")
 
