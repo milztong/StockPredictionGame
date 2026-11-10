@@ -3,6 +3,7 @@ package com.projects.stock_predictor.config;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -41,6 +42,7 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         // Public endpoints
                         .requestMatchers("/api/leaderboard").permitAll()
                         .requestMatchers("/api/challenge/today").permitAll()
@@ -58,8 +60,11 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        // Accept PulseStack frontend (local + Vercel) and legacy StockPredictor frontend (3000)
+        // Accept the production Jinodo clients, Vercel previews and local development.
         config.setAllowedOriginPatterns(List.of(
+                "https://jinodo.tongmilz.com",
+                "https://www.tongmilz.com",
+                "https://tongmilz.com",
                 "https://*.vercel.app",
                 "http://localhost:*",
                 frontendUrl
